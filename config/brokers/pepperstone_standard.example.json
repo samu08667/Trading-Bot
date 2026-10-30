@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "name": "pepperstone_standard_major_fx_example",
+    "purpose": "Versioned research-only example for offline estimated net returns.",
+    "broker": "Pepperstone",
+    "account_type": "Standard",
+    "not_local_private_config": true,
+    "contains_private_broker_data": false,
+    "spread_values_provided_by_user": true,
+    "input_spread_unit": "pips",
+    "fallback_spread_unit": "MT5 points",
+    "conversion_rule": "For the listed major FX examples, 1 pip = 10 MT5 points.",
+    "fallback_policy": "Average spread values are converted to fallback_spread_points; minimum spread values are not used as fallbacks.",
+    "robust_research_note": "Prefer p75, p90, or p95 spread calibration from MT5 exports or the local DB before relying on broker-aware net results.",
+    "commission_note": "commission_bps_round_trip defaults to 0.0 as a research assumption for this example, not as a guarantee of the user's account conditions.",
+    "slippage_note": "slippage_bps_round_trip is a research assumption, not a broker fact.",
+    "xauusd_note": "XAUUSD is intentionally omitted because the provided Pepperstone table did not include XAUUSD spread values."
+  },
+  "default": {
+    "slippage_bps_round_trip": 0.0,
+    "commission_bps_round_trip": 0.0,
+    "fallback_spread_points": null
+  },
+  "symbols": {
+    "AUDUSD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 11
+    },
+    "EURUSD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 11
+    },
+    "GBPUSD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 13
+    },
+    "USDCAD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 13
+    },
+    "USDCHF": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 13
+    },
+    "USDJPY": {
+      "point_size": 0.001,
+      "fallback_spread_points": 13
+    }
+  }
+}

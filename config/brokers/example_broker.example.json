@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "name": "example_broker",
+    "purpose": "Versioned research-only broker config example.",
+    "not_broker_specific": true,
+    "contains_private_broker_data": false,
+    "notes": [
+      "This file is an example template only.",
+      "Do not copy private broker terms, account details, credentials, or personal assumptions into versioned files.",
+      "Real broker-specific configs should use config/brokers/<name>.json and remain ignored by Git."
+    ]
+  },
+  "default": {
+    "slippage_bps_round_trip": 0.0,
+    "commission_bps_round_trip": 0.0,
+    "fallback_spread_points": null
+  },
+  "symbols": {
+    "EURUSD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 12
+    },
+    "GBPUSD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 15
+    },
+    "USDJPY": {
+      "point_size": 0.001,
+      "fallback_spread_points": 12
+    },
+    "XAUUSD": {
+      "point_size": 0.01,
+      "fallback_spread_points": 25
+    }
+  }
+}

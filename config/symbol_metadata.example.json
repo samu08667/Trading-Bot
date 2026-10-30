@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "name": "symbol_metadata_example",
+    "purpose": "Versioned template for local symbol point-size metadata used by offline research feature generation.",
+    "not_broker_specific": true,
+    "contains_private_broker_data": false,
+    "notes": [
+      "Copy this file to config/symbol_metadata.local.json and fill values from read-only broker symbol metadata for the exact exported symbol.",
+      "Do not treat placeholder null values as broker truth.",
+      "Do not use current spread snapshots as fixed historical spreads; historical spread must come from price_bars.spread."
+    ]
+  },
+  "XAUUSD": {
+    "point_size": null,
+    "digits": null,
+    "trade_tick_size": null,
+    "trade_contract_size": null,
+    "source": "fill_from_read_only_symbol_metadata"
+  }
+}

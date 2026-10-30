@@ -1,0 +1,48 @@
+{
+  "policy_id": "gbpusd_short_h10_1_5_off_hours_demo_execution_policy_v1",
+  "candidate_id": "gbpusd_short_h10_1_5_off_hours",
+  "symbol": "GBPUSD",
+  "timeframe": "M15",
+  "direction": "short",
+  "account_currency": "EUR",
+  "intended_demo_equity": 1000.0,
+  "risk_percent_max": 0.5,
+  "risk_amount_max": 5.0,
+  "max_margin_usage_ratio": 0.7,
+  "max_margin_usage_amount": 700.0,
+  "max_margin_usage_warning_ratio": 0.5,
+  "max_margin_usage_warning_amount": 500.0,
+  "spread_unit": "broker_points",
+  "max_spread_points": 15.0,
+  "max_open_positions": 1,
+  "volume_policy": {
+    "rounding": "floor_to_volume_step",
+    "below_min_volume": "block",
+    "above_max_volume": "block",
+    "risk_margin_conflict": "cap_by_margin_or_block_before_request",
+    "do_not_force_full_risk_if_margin_infeasible": true
+  },
+  "safety_boundaries": {
+    "paper_only_until_explicit_future_change": true,
+    "real_money_allowed": false,
+    "broker_connection_allowed_for_this_policy_file": false,
+    "order_execution_allowed": false,
+    "order_request_construction_allowed": false,
+    "order_check_allowed": false,
+    "order_calc_allowed": false,
+    "manual_approval_required_before_any_future_demo_order": true
+  },
+  "future_required_checks": {
+    "live_data_signal_required": true,
+    "demo_account_reconfirmation_required": true,
+    "current_equity_free_margin_check_required": true,
+    "symbol_contract_reconfirmation_required": true,
+    "spread_recheck_required": true,
+    "stop_level_recheck_required": true,
+    "broker_margin_validation_required_future": true,
+    "state_reconciliation_required": true,
+    "duplicate_protection_required": true,
+    "kill_switch_required": true,
+    "audit_logging_required": true
+  }
+}

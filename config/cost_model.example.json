@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "name": "generic_research_cost_model_example",
+    "purpose": "Versioned research-only template for offline estimated net returns.",
+    "not_broker_specific": true,
+    "contains_private_broker_data": false,
+    "notes": [
+      "Values are generic placeholders and should not be treated as accurate for any broker.",
+      "Verify point_size, fallback_spread_points, slippage, and commissions against the exact exported symbol before relying on net results.",
+      "Keep broker-specific overrides in ignored local files such as config/cost_model.local.json or config/brokers/<name>.json."
+    ]
+  },
+  "default": {
+    "slippage_bps_round_trip": 0.0,
+    "commission_bps_round_trip": 0.0,
+    "fallback_spread_points": null
+  },
+  "symbols": {
+    "EURUSD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 12
+    },
+    "GBPUSD": {
+      "point_size": 0.00001,
+      "fallback_spread_points": 15
+    },
+    "USDJPY": {
+      "point_size": 0.001,
+      "fallback_spread_points": 12
+    },
+    "XAUUSD": {
+      "point_size": 0.01,
+      "fallback_spread_points": 25
+    },
+    "XAGUSD": {
+      "point_size": 0.001,
+      "fallback_spread_points": null
+    }
+  }
+}

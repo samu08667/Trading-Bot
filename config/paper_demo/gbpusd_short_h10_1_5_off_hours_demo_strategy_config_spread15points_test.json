@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "config_role": "paper_demo_strategy_config_spread15points_test",
+  "candidate_id": "gbpusd_short_h10_1_5_off_hours",
+  "paper_only": true,
+  "broker_connection_allowed": false,
+  "order_execution_allowed": false,
+  "real_money_allowed": false,
+  "candidate": {
+    "symbol": "GBPUSD",
+    "direction": "short",
+    "timeframe": "M15",
+    "target_horizon": 10,
+    "target_family": "preferred_1_5atr_1atr_hit_first",
+    "candidate_framing": "risk_filtered_candidate",
+    "baseline_reference": "single_filter_a"
+  },
+  "entry_rule": {
+    "regime_column": "hour_session",
+    "regime_value": "Off_hours",
+    "exact_condition": "numeric_tercile:close_to_ma_fast_atr_20:high_tercile AND numeric_tercile:tick_volume_percentile_100:mid_tercile",
+    "entry_description": "Short GBPUSD M15 only when hour_session=Off_hours and the exact feature condition is true"
+  },
+  "risk_reward": {
+    "tp_atr": 1.5,
+    "sl_atr": 1.0,
+    "atr_column": "atr_20",
+    "same_bar_policy": "stop_first",
+    "timeout_note": "Close/evaluate after h10 is reached in all cases if neither TP nor SL is hit first"
+  },
+  "cost_assumptions": {
+    "p75_cost_config": "config/brokers/pepperstone_historical_p75.local.json",
+    "p90_cost_config": "config/brokers/pepperstone_historical_p90.local.json"
+  },
+  "demo_risk_controls": {
+    "risk_per_trade_note": "1% legacy paper-only simulation note; not the canonical demo execution risk. Approval, request construction, order_check, and order_send sizing must use config/fixed_candidate_demo_execution_policy.json (0.5% / 5 EUR cap).",
+    "max_daily_stop_note": "No fixed daily stop for initial paper/demo monitoring; daily PnL must still be logged",
+    "max_weekly_stop_note": "No fixed weekly stop for initial paper/demo monitoring; weekly PnL must still be logged",
+    "max_open_positions_note": "Maximum 1 open paper/demo trade at a time",
+    "max_daily_trades_note": "No fixed max daily trade count; signals remain limited by the one-open-trade rule and logging requirements"
+  },
+  "spread_and_session_controls": {
+    "spread_threshold_note": "TEST VARIANT: skip new paper/demo signals if broker spread exceeds 15 broker points (about 1.5 pips on GBPUSD 5-digit symbols).",
+    "max_spread_points": 15.0,
+    "spread_policy_status": "configured_numeric_threshold",
+    "spread_policy_action_when_exceeded": "skip_new_signal",
+    "spread_policy_action_when_missing": "skip_new_signal",
+    "session_filter_note": "hour_session=Off_hours only",
+    "spread_unit": "broker_points"
+  },
+  "kill_switch": {
+    "kill_switch_note": "Disable new paper/demo signals if required data is missing, required features are missing, spread is abnormal or not yet configured, ATR calculation fails, timeframe/session mismatch occurs, or an existing paper/demo trade is already open",
+    "conditions": [
+      "required_data_missing",
+      "required_features_missing",
+      "spread_abnormal_or_not_configured",
+      "atr_calculation_failed",
+      "timeframe_mismatch",
+      "session_mismatch",
+      "existing_paper_demo_trade_open"
+    ]
+  },
+  "logging": {
+    "logging_note": "Log timestamp, symbol, timeframe, feature values, regime value, spread, cost profile, signal state, entry/exit reason, R/net_R, bars held, errors, skipped reasons, daily paper PnL, weekly paper PnL, and kill-switch state",
+    "required_fields": [
+      "timestamp",
+      "symbol",
+      "timeframe",
+      "feature_values",
+      "regime_value",
+      "spread",
+      "cost_profile",
+      "signal_state",
+      "entry_reason",
+      "exit_reason",
+      "R",
+      "net_R",
+      "bars_held",
+      "errors",
+      "skipped_reasons",
+      "daily_paper_pnl",
+      "weekly_paper_pnl",
+      "kill_switch_state"
+    ]
+  },
+  "paper_broker_mode": {
+    "paper_broker_mode_note": "Paper logging now; demo broker preparation later"
+  },
+  "manual_review": {
+    "manual_review_note": "Temporary spread-threshold test config. Do not treat as canonical until replay/review artifacts are compared."
+  }
+}
