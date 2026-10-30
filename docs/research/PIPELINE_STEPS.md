@@ -77,3 +77,676 @@ For current FX M15 h10 ML research guidance, use `long_tp_2atr_sl_1atr_hit_first
 For a normal research run, start with the final validation and scorecard reports, then inspect intermediate CSVs only when debugging a specific feature, symbol, direction, or cost assumption.
 
 The pipeline remains offline and research-only at every step.
+
+## Detailed Usage Reference
+
+- [Manual calendar export](#manual-metatrader-5-export-step)
+- [CSV/database workflow](#automated-repository-workflow)
+- [Historical bar import](#historical-price-bars-from-metatrader-5)
+- [Price features](#price-feature-generation), [market features](#market-feature-generation), and [dataset generation](#ml-dataset-generation)
+- [Research command examples](#research-command-examples)
+- [Troubleshooting](#common-errors)
+
+[Back to README](../../README.md) | [Report interpretation](OUTPUTS_AND_REPORTS.md) | [Methodology](METHODOLOGY_GUARDRAILS.md)
+
+Commands below run from the repository root and are examples, not a sequence to
+execute blindly. They require local inputs absent from the public snapshot.
+Terminal-connected acquisition is separate from offline testing. Install the
+MetaTrader5 connector only in a separate environment for supervised acquisition.
+No command here is a demo-trading launch procedure.
+
+## Manual MetaTrader 5 Export Step
+
+Economic-calendar acquisition requires a manual MT5 export. These instructions concern research data preparation, not demo execution.
+
+1. Open MetaEditor from MetaTrader 5.
+2. Create or open:
+
+   ```text
+   MQL5\Scripts\ExportEconomicCalendar.mq5
+   ```
+
+3. Copy the repository file `mql5/ExportEconomicCalendar.mq5` into that MetaEditor script location.
+4. Compile the script in MetaEditor.
+5. In MetaTrader 5, run `ExportEconomicCalendar` manually from the Scripts section.
+
+The script creates:
+
+```text
+economic_calendar.csv
+```
+
+MetaTrader 5 usually writes files to:
+
+```text
+MQL5\Files
+```
+
+To find that folder, use:
+
+```text
+MetaTrader 5 > File > Open Data Folder > MQL5 > Files
+```
+
+The expected CSV header is:
+
+```text
+value_id,event_id,time_server,currency,event_name,event_code,importance,impact_type,actual,forecast,previous,revised_previous,period,revision
+```
+
+## Automated Repository Workflow
+
+After the CSV has been exported, run the repository-side workflow from the repository root:
+
+```powershell
+python scripts/run_pipeline.py
+```
+
+By default this uses:
+
+```text
+Database: data\trading_bot.db
+CSV:      data\economic_calendar.csv
+Table:    economic_events
+```
+
+The pipeline creates `data/`, `models/`, and `logs/` if missing, initializes the SQLite database, and imports the CSV. Duplicate rows are ignored using the unique `value_id`.
+
+Database initialization also creates the `price_bars` table for historical OHLCV bars, the `price_features` table for derived price features, the `market_features` table for price features combined with economic calendar timing, and the `ml_dataset` table for supervised future-return and future-path labels. These tables are unique by `symbol`, `timeframe`, and `time_server`.
+
+To copy directly from the MT5 `MQL5\Files` export location before importing:
+
+```powershell
+python scripts/run_pipeline.py --csv-source "C:\path\to\MQL5\Files\economic_calendar.csv"
+```
+
+To use custom local paths:
+
+```powershell
+python scripts/run_pipeline.py --db-path data/trading_bot.db --csv-path data/economic_calendar.csv
+```
+
+To initialize folders and the database only, without requiring a CSV:
+
+```powershell
+python scripts/run_pipeline.py --init-only
+```
+
+To import only, assuming the database and `economic_events` table already exist:
+
+```powershell
+python scripts/run_pipeline.py --import-only
+```
+
+The final report shows folders checked or created, database path, CSV path, whether `--csv-source` was copied, rows read, rows inserted, rows skipped, and final status.
+
+## Standalone Commands
+
+Initialize the SQLite database directly:
+
+```powershell
+python scripts/init_database.py
+```
+
+Import the default CSV directly:
+
+```powershell
+python scripts/import_calendar_csv.py
+```
+
+The standalone importer defaults to:
+
+```text
+CSV: data\economic_calendar.csv
+DB:  data\trading_bot.db
+```
+
+Check economic calendar data:
+
+```powershell
+python scripts/check_database.py
+```
+
+## Historical Price Bars From MetaTrader 5
+
+Historical OHLCV import is read-only and uses the official MetaTrader 5 Python package. It initializes a terminal connection and retrieves bars with `copy_rates_range()`; symbol selection and connection shutdown are also part of the import workflow. It does not send orders and does not use order execution APIs.
+
+On Windows, install the MetaTrader 5 Python package in your active environment if it is not already available:
+
+```powershell
+python -m pip install MetaTrader5
+```
+
+Make sure the MetaTrader 5 desktop terminal is installed, opened, and connected to the account/server that provides the requested symbol.
+
+Initialize the database schema:
+
+```powershell
+python scripts/init_database.py
+```
+
+Import historical bars:
+
+```powershell
+python scripts/import_price_bars.py --symbol EURUSD --timeframe M15 --from-date 2024-01-01 --to-date 2024-12-31
+```
+
+Supported timeframes:
+
+```text
+M1, M5, M15, M30, H1, H4, D1
+```
+
+Dates are interpreted as UTC when no timezone is included. ISO datetime values are also accepted:
+
+```powershell
+python scripts/import_price_bars.py --symbol EURUSD --timeframe H1 --from-date 2024-01-01T00:00:00Z --to-date 2024-02-01T00:00:00Z
+```
+
+Use a custom database path if needed:
+
+```powershell
+python scripts/import_price_bars.py --symbol GBPUSD --timeframe H4 --from-date 2024-01-01 --to-date 2024-06-30 --db-path data\trading_bot.db
+```
+
+The import report prints symbol, timeframe, date range, rows downloaded, rows inserted, and rows skipped. Existing bars are ignored with `INSERT OR IGNORE`.
+
+Check imported price bars:
+
+```powershell
+python scripts/check_price_bars.py
+```
+
+The checker prints total bars, counts and date ranges by symbol/timeframe, duplicate key count, missing OHLC count, and spread average/min/max by symbol/timeframe.
+
+## Price Feature Generation
+
+Feature generation reads from `price_bars` and writes to `price_features`. It is a data-preparation step only: it does not train models, run backtests, create strategies, send orders, or use order execution APIs.
+
+Initialize the schema first:
+
+```powershell
+python scripts/init_database.py
+```
+
+Generate features for one symbol and timeframe:
+
+```powershell
+python scripts/generate_price_features.py --symbol EURUSD --timeframe M15
+```
+
+Use a custom database path if needed:
+
+```powershell
+python scripts/generate_price_features.py --symbol EURUSD --timeframe H1 --db-path data\trading_bot.db
+```
+
+The generator computes:
+
+```text
+return_1, return_5, return_20
+candle_range, body_size, upper_wick, lower_wick
+true_range, atr_14, atr_20, atr_50
+range_to_atr_20, body_to_atr_20
+upper_wick_to_atr_20, lower_wick_to_atr_20
+volatility_20, volatility_100, volatility_ratio_20_100
+ma_fast, ma_slow, ma_diff
+close_to_ma_fast_atr_20, close_to_ma_slow_atr_20, ma_diff_atr_20
+spread_avg_20, spread_price, spread_return, spread_to_atr_20, tick_volume_avg_20
+tick_volume_ratio_20, tick_volume_zscore_100, tick_volume_percentile_100
+volume_spike_20, volume_dry_up_20
+spread_to_volume_ratio
+volume_vs_hour_avg, volume_vs_session_avg
+hour_session, hour, day_of_week
+```
+
+ATR features are calculated from current high/low and previous close only. Rolling ATR and volatility windows use past/current rows, so their initial rows remain `NULL` until enough history exists.
+
+Raw `spread` and `spread_avg_20` are preserved as MT5 points. `spread_price = spread * point_size`, `spread_return = spread_price / close`, and `spread_to_atr_20 = spread_price / atr_20`. Feature generation has generic internal point-size defaults only for common FX symbols; use `--point-size` or `--point-size-config config/symbol_metadata.local.json` for broker-specific symbols such as metals, and `--strict-point-size` when missing point size should fail instead of producing `NULL` spread price features. The versioned `config/symbol_metadata.example.json` is only a placeholder template; keep filled broker metadata in ignored local files.
+
+Forex/CFD exports usually provide `tick_volume`, not centralized exchange volume. In this research pipeline, volume-derived features are liquidity and context filters only. They should help answer when another setup works better or worse; they are not standalone buy/sell signals.
+
+The normalized volume features are:
+
+- `tick_volume_ratio_20`: current `tick_volume` divided by the rolling 20-bar tick-volume average.
+- `tick_volume_zscore_100`: current `tick_volume` versus the rolling 100-bar mean and standard deviation.
+- `tick_volume_percentile_100`: current `tick_volume` rank inside the rolling 100-bar past/current window.
+- `volume_spike_20`: binary flag for `tick_volume_ratio_20 >= 1.5`.
+- `volume_dry_up_20`: binary flag for `tick_volume_ratio_20 <= 0.7`.
+- `spread_to_volume_ratio`: rolling spread divided by rolling tick volume, with zero-volume protection.
+- `volume_vs_hour_avg`: current `tick_volume` divided by the previous expanding mean for the same hour.
+- `volume_vs_session_avg`: current `tick_volume` divided by the previous expanding mean for the same session.
+
+`volume_vs_hour_avg` and `volume_vs_session_avg` use shifted expanding means, so the current row is compared only with earlier rows from the same hour or session. `hour_session` uses a single label per bar: `Asia` for hours 0-7, `London` for 8-13, `New_York` for 14-21, and `Off_hours` otherwise. This assigns the London/New York overlap hours 14-15 to `New_York` in the generated categorical feature.
+
+Volume features must be validated with long and short kept separate, walk-forward selection, cost-adjusted net returns, and pair-specific and cross-pair results reviewed separately. Do not interpret a result such as `volume_spike_20 strong` as a direct buy/sell rule; it is only evidence that volume context may be useful as a filter in a future rule-based backtest.
+
+Rows are written with an upsert on `symbol`, `timeframe`, and `time_server`, so rerunning the command refreshes existing feature rows.
+
+Check generated features:
+
+```powershell
+python scripts/check_price_features.py
+```
+
+The checker prints total feature rows, counts and date ranges by symbol/timeframe, NULL counts in core features, basic stats for return, volatility, spread, ATR/range, and volume/liquidity features when those columns exist.
+
+## Market Feature Generation
+
+Market feature generation reads from `price_features` and `economic_events`, then writes to `market_features`. It uses only event timing, currency, and importance. It intentionally does not use `actual`, `forecast`, `previous`, or `revised_previous` from the economic calendar, to avoid leaking post-event data into candle features.
+
+Initialize the schema first:
+
+```powershell
+python scripts/init_database.py
+```
+
+Generate market features for one symbol and timeframe:
+
+```powershell
+python scripts/generate_market_features.py --symbol EURUSD --timeframe M15
+```
+
+Use a custom database path if needed:
+
+```powershell
+python scripts/generate_market_features.py --symbol EURUSD --timeframe H1 --db-path data\trading_bot.db
+```
+
+Override relevant news currencies manually:
+
+```powershell
+python scripts/generate_market_features.py --symbol EURUSDm --timeframe M15 --news-currencies "EUR,USD"
+```
+
+Built-in symbol to news-currency mapping:
+
+```text
+EURUSD -> EUR,USD
+GBPUSD -> GBP,USD
+USDJPY -> USD,JPY
+XAUUSD -> USD
+XAGUSD -> USD
+```
+
+Broker suffixes such as `EURUSDm`, `XAUUSDm`, and `EURUSD.` are normalized to the base symbol when possible.
+
+The generator computes next/previous news distances, high-impact windows, blackout/post-news flags, event counts, max importance, and next/last event currency and importance. High impact means `importance >= 2`.
+
+Check generated market features:
+
+```powershell
+python scripts/check_market_features.py
+```
+
+The checker prints total rows, counts and date ranges by symbol/timeframe, blackout and high-impact counts, minutes-to/from-news statistics, and rows with missing required news features.
+
+## ML Dataset Generation
+
+ML dataset generation reads from `market_features` and writes to `ml_dataset`. It only prepares supervised learning rows by adding future-return targets and future MFE/MAE labels. It does not train models, run backtests, create strategies, send orders, or use order execution APIs.
+
+Initialize the schema first:
+
+```powershell
+python scripts/init_database.py
+```
+
+Generate the dataset for one symbol and timeframe:
+
+```powershell
+python scripts/generate_ml_dataset.py --symbol EURUSD --timeframe M15
+```
+
+Use a minimum return threshold for directional targets:
+
+```powershell
+python scripts/generate_ml_dataset.py --symbol EURUSD --timeframe M15 --min-return-threshold 0.0002
+```
+
+Use a custom database path if needed:
+
+```powershell
+python scripts/generate_ml_dataset.py --symbol EURUSD --timeframe H1 --db-path data\trading_bot.db
+```
+
+The generator computes:
+
+```text
+future_return_5, future_return_10, future_return_20
+future_max_return_5/10/20, future_min_return_5/10/20, future_range_5/10/20
+long_mfe_5/10/20, long_mae_5/10/20
+short_mfe_5/10/20, short_mae_5/10/20
+target_long_good_5/10/20, target_short_good_5/10/20
+long_tp_1atr_sl_1atr_hit_first_10, long_tp_2atr_sl_1atr_hit_first_10
+short_tp_1atr_sl_1atr_hit_first_10, short_tp_2atr_sl_1atr_hit_first_10
+long_triple_barrier_1_1_10, long_triple_barrier_2_1_10
+short_triple_barrier_1_1_10, short_triple_barrier_2_1_10
+*_bars_to_first_barrier_10
+target_up_5, target_up_10, target_up_20
+target_down_5, target_down_10, target_down_20
+```
+
+Future returns are calculated from future closes. Future max/min return, MFE, MAE, `target_*_good_*`, and h5/h10/h20 triple-barrier columns are supervised labels derived from future bars; they are not features, not signals, and not execution rules. Triple-barrier labels use current-bar `atr_20` and the matching future OHLC path horizon. If TP and SL are touched in the same future candle, the conservative `stop_first` policy labels the stop as first. The final rows that do not have enough future bars are kept with `NULL` target values.
+
+Check the generated dataset:
+
+```powershell
+python scripts/check_ml_dataset.py
+```
+
+The checker prints total rows, counts and date ranges by symbol/timeframe, target NULL counts, distributions for directional and MFE/MAE-based h10 targets, and basic stats for future-return and future-path label columns.
+
+## Research Command Examples
+
+Descriptions, output inventories, and interpretation remain in the pipeline map
+above and [Outputs And Reports](OUTPUTS_AND_REPORTS.md). Replace `RUN_ID`,
+`GROUP_ID`, and other uppercase placeholders with local identifiers. Existing
+outputs require explicit overwrite flags; use them only when regeneration is
+intended. Gross and net comparisons, symbols, and directions remain separate.
+
+The full research pipeline imports from MT5 unless `--skip-price-import` is set.
+For offline research, use both `--skip-calendar-import` and `--skip-price-import`
+and supply an existing local database and a verified cost config. Heavy research
+execution is a separate user-run workflow, not part of the offline test suite.
+
+### ML Research Reports
+
+Run the default research analysis:
+
+```powershell
+python scripts/ml_research.py --symbol EURUSD --timeframe M15
+```
+
+Choose a different classification target or return target if needed:
+
+```powershell
+python scripts/ml_research.py --symbol EURUSD --timeframe M15 --target target_down_10 --return-target future_return_10
+```
+
+Use a custom output folder:
+
+```powershell
+python scripts/ml_research.py --symbol EURUSD --timeframe M15 --output-dir reports\ml_research
+```
+
+Analyze ML research reports:
+
+```powershell
+python scripts/analyze_research_reports.py
+```
+
+Analyze one folder only:
+
+```powershell
+python scripts/analyze_research_reports.py --input-dir reports\ml_research\long\EURUSD_M15_h10
+```
+
+Build the preferred FX target feature-stability report after target-specific ML reports exist:
+
+```powershell
+python scripts/build_preferred_target_feature_stability.py
+```
+
+Build a preferred feature hypothesis shortlist from the stability report:
+
+```powershell
+python scripts/build_preferred_feature_hypothesis_shortlist.py
+```
+
+Run controlled preferred-feature backtests from the shortlist:
+
+```powershell
+python scripts/run_preferred_feature_backtests.py
+```
+
+Compare an existing gross/none preferred-feature run with an estimated/net run:
+
+```powershell
+python scripts/compare_preferred_feature_backtest_cost_modes.py --gross-run-id GROSS_RUN_ID --net-run-id NET_RUN_ID
+```
+
+Run small controlled preferred-feature combination backtests from the cost-mode comparison:
+
+```powershell
+python scripts/run_preferred_feature_combination_backtests.py --gross-run-id GROSS_RUN_ID --net-run-id NET_RUN_ID
+```
+
+Check generated reports:
+
+```powershell
+python scripts/check_ml_research_outputs.py
+```
+
+Compare multiple ML targets without overwriting the standard ML report folder:
+
+```powershell
+python scripts/compare_ml_target_reports.py --symbol EURUSD --timeframe M15 --direction long --horizon 10 --run-ml-research --overwrite
+python scripts/compare_ml_target_reports.py --symbol EURUSD --timeframe M15 --direction short --horizon 10 --run-ml-research --overwrite
+```
+
+### Backtest Research Reports
+
+Run one exploratory backtest:
+
+```powershell
+python scripts/backtest_research.py --symbol EURUSD --timeframe M15 --target-horizon 10
+```
+
+Evaluate all symbol/timeframe/horizon backtest folders:
+
+```powershell
+python scripts/evaluate_backtest_results.py
+```
+
+Select robust research hypotheses:
+
+```powershell
+python scripts/select_research_hypotheses.py
+```
+
+### Combined Hypothesis Research
+
+The minimal hypothesis discovery wrapper can plan the upstream chain that produces run-scoped combined outputs for validation:
+
+```powershell
+python scripts/run_hypothesis_discovery_pipeline.py --run-id RUN_ID --direction long --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --cost-config config/cost_model.example.json --dry-run
+```
+
+Run one combined backtest:
+
+```powershell
+python scripts/backtest_combined_hypotheses.py --symbol EURUSD --timeframe M15 --target-horizon 10
+```
+
+Evaluate combined hypotheses across all combined result folders:
+
+```powershell
+python scripts/evaluate_combined_hypotheses.py
+```
+
+Use a fixed run ID when needed:
+
+```powershell
+python scripts/evaluate_combined_hypotheses.py --run-id RUN_ID
+```
+
+### Year-by-Year Combined Hypothesis Validation
+
+Run validation for a known combined-evaluation run:
+
+```powershell
+python scripts/validate_hypotheses_by_year.py --run-id RUN_ID --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10
+```
+
+Or pass the selected combinations file directly:
+
+```powershell
+python scripts/validate_hypotheses_by_year.py --hypotheses-file reports\backtests\combined\evaluations\RUN_ID\long\selected_combined_hypotheses.csv --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long
+```
+
+Useful controls:
+
+```powershell
+python scripts/validate_hypotheses_by_year.py --run-id RUN_ID --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --start-year 2020 --end-year 2026 --min-trades-per-year 100 --min-positive-year-ratio 0.75 --min-positive-symbol-ratio 0.75
+python scripts/validate_hypotheses_by_year.py --run-id RUN_ID --symbols EURUSD GBPUSD USDJPY XAUUSD --years 2022 2023 2024 2025
+python scripts/validate_hypotheses_by_year.py --run-id RUN_ID --include-incomplete-years
+```
+
+### Random Baseline Robustness Tests
+
+Run cross-pair final candidates for a known run:
+
+```powershell
+python scripts/run_random_baseline_tests.py --run-id RUN_ID --direction long --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --cost-mode estimated --return-mode net --cost-config config/cost_model.example.json --strict-cost-config --overwrite
+```
+
+Include pair-specific candidates too:
+
+```powershell
+python scripts/run_random_baseline_tests.py --run-id RUN_ID --direction short --symbols EURUSD GBPUSD USDJPY XAUUSD --include-pair-specific --cost-mode estimated --return-mode net --cost-config config/cost_model.example.json --strict-cost-config --overwrite
+```
+
+### Candidate Baseline Diagnostics
+
+Run long diagnostics:
+
+```powershell
+python scripts/run_candidate_baseline_diagnostics.py --run-id RUN_ID --direction long --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --cost-mode estimated --return-mode net --strict-cost-config --cost-config config/cost_model.example.json --random-runs 250 --overwrite
+```
+
+Run short diagnostics:
+
+```powershell
+python scripts/run_candidate_baseline_diagnostics.py --run-id RUN_ID --direction short --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --cost-mode estimated --return-mode net --strict-cost-config --cost-config config/cost_model.example.json --random-runs 250 --overwrite
+```
+
+### Research Decision Report
+
+Build the report after validation and random baseline outputs exist:
+
+```powershell
+python scripts/build_research_decision_report.py --run-id RUN_ID --direction long --cost-mode estimated --return-mode net --overwrite
+python scripts/build_research_decision_report.py --run-id RUN_ID --direction short --cost-mode estimated --return-mode net --overwrite
+```
+
+Run the clearer combined validation pipeline wrapper in dry-run mode before any manual execution:
+
+```powershell
+python scripts/run_combined_validation_pipeline.py --run-id RUN_ID --direction long --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --cost-config config/cost_model.example.json --dry-run
+```
+
+`scripts/run_combined_validation_pipeline.py` writes a manifest, command plan, stage results, summary, warnings, and markdown report under `reports\combined_validation_pipeline\{RUN_ID}\`. Controlled execution requires explicit `--execute` and should be user-run only for heavy research outputs. The older `scripts/run_research_validation_pipeline.py` remains available as a compatibility runner:
+
+```powershell
+python scripts/run_research_validation_pipeline.py --run-id RUN_ID --direction long --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --cost-config config/cost_model.example.json
+```
+
+### Full Research Pipeline
+
+Recommended single command from the repository root:
+
+```powershell
+python scripts/run_full_research_pipeline.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --from-date 2022-01-01 --to-date 2025-12-31 --target-horizon 10 --direction long --cost-config config/cost_model.example.json --start-year 2020 --end-year 2026
+```
+
+To run with estimated/net defaults, pass an explicit cost config so the orchestrator can validate costs before child stages start:
+
+```powershell
+python scripts/run_full_research_pipeline.py --cost-config config/cost_model.example.json
+```
+
+Regenerate without reimporting prices:
+
+```powershell
+python scripts/run_full_research_pipeline.py --skip-calendar-import --skip-price-import --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --cost-config config/cost_model.example.json --start-year 2022 --end-year 2024 --overwrite-validation
+python scripts/run_full_research_pipeline.py --skip-calendar-import --skip-price-import --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction short --cost-config config/cost_model.example.json --start-year 2022 --end-year 2024 --overwrite-validation
+```
+
+The full pipeline can optionally run the final post-validation review after yearly validation and the final feature scorecard:
+
+```powershell
+python scripts/run_full_research_pipeline.py --skip-calendar-import --skip-price-import --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --cost-mode estimated --return-mode net --strict-cost-config --cost-config config/brokers/pepperstone_historical_p75.local.json --start-year 2022 --end-year 2024 --run-final-review --include-pair-specific-final-review --random-baseline-runs 250 --diagnostics-random-runs 100 --overwrite-validation --overwrite-final-review
+```
+
+Useful skip flags:
+
+```powershell
+python scripts/run_full_research_pipeline.py --cost-config config/cost_model.example.json --skip-checks
+python scripts/run_full_research_pipeline.py --cost-config config/cost_model.example.json --continue-on-error
+```
+
+You can also rebuild only the scorecard for an existing run:
+
+```powershell
+python scripts/build_final_feature_scorecard.py --run-id RUN_ID --direction long --overwrite
+```
+
+### Horizon Consistency Report
+
+Example:
+
+```powershell
+python scripts/build_horizon_consistency_report.py --group-id GROUP_ID --direction long --h5-run-id RUN_ID_H5 --h10-run-id RUN_ID_H10 --h20-run-id RUN_ID_H20 --cost-mode estimated --return-mode net --overwrite
+```
+
+### Walk-Forward Research Validation
+
+Run it directly:
+
+```powershell
+python scripts/run_walk_forward_research.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --train-start-year 2020 --first-test-year 2022 --last-test-year 2025 --overwrite
+python scripts/run_walk_forward_research.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction short --train-start-year 2020 --first-test-year 2022 --last-test-year 2025 --overwrite
+```
+
+By default, walk-forward searches combinations up to 2 conditions. Larger combinations are controlled by beam search instead of exhaustive brute force:
+
+```powershell
+python scripts/run_walk_forward_research.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --max-combination-size 5 --max-seed-conditions 12 --max-candidates-per-level 50 --overwrite
+```
+
+The full pipeline can optionally run walk-forward after the final scorecard:
+
+```powershell
+python scripts/run_full_research_pipeline.py --skip-calendar-import --skip-price-import --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --cost-config config/cost_model.example.json --start-year 2022 --end-year 2024 --overwrite-validation --run-walk-forward
+python scripts/run_full_research_pipeline.py --skip-calendar-import --skip-price-import --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction short --cost-config config/cost_model.example.json --start-year 2022 --end-year 2024 --overwrite-validation --run-walk-forward
+```
+
+### Overlapping Label Controls
+
+Walk-forward uses purged train/test folds by default. Standard run with purge:
+
+```powershell
+python scripts/run_walk_forward_research.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --train-start-year 2020 --first-test-year 2022 --last-test-year 2025 --purge-overlap --embargo-bars 0
+```
+
+More severe walk-forward robustness run:
+
+```powershell
+python scripts/run_walk_forward_research.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --train-start-year 2020 --first-test-year 2022 --last-test-year 2025 --purge-overlap --embargo-bars 10 --non-overlap-test
+```
+
+Yearly validation can run a non-overlap robustness check:
+
+```powershell
+python scripts/validate_hypotheses_by_year.py --run-id RUN_ID --direction long --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --non-overlap-eval
+```
+
+## Common Errors
+
+`CSV missing`: run the MQL5 script manually in MetaTrader 5 and copy `economic_calendar.csv` into `data\economic_calendar.csv`, or pass `--csv-source` with the path to the MT5 `MQL5\Files` CSV.
+
+`Database missing`: run `python scripts/init_database.py`, or run `python scripts/run_pipeline.py` without `--import-only`.
+
+`Empty CSV`: the importer exits gracefully with zero rows read, inserted, and skipped. Re-run the MT5 export if records were expected.
+
+`Wrong delimiter`: the importer detects comma or semicolon automatically and falls back to comma. If the header still cannot be read, it prints the detected delimiter and columns.
+
+`Missing required columns`: the importer prints the required columns, detected columns, detected delimiter, and a hint that the CSV header or delimiter may be wrong.
+
+`Duplicate value_id rows`: duplicate rows are skipped non-destructively. Existing database rows are not deleted or overwritten.
+
+`MetaTrader5 package missing`: install it with `python -m pip install MetaTrader5` in the same environment used to run the scripts.
+
+`ML research dependencies missing`: install the offline dependency set listed in the [README](../../README.md#offline-testing) in the environment used for research. The full requirements file also includes the terminal connector.
+
+`Symbol unavailable`: open MetaTrader 5, verify that the symbol exists in Market Watch, and retry. The importer attempts `mt5.symbol_select(symbol, True)` before failing.

@@ -4,9 +4,11 @@ When modifying the pipeline, update this document if the change affects scripts,
 
 ## Objective
 
-Trading-Bot is an offline research project for preparing market data, building supervised research datasets, and evaluating candidate feature hypotheses before any trading system is designed.
+Trading-Bot combines offline market-data research with a narrowly scoped GBPUSD M15 demo-only execution prototype. Research prepares datasets and evaluates feature hypotheses; the fixed-candidate execution stage is documented below.
 
-The project is intentionally not a live trading system. Its purpose is to create reproducible, versioned research workflows that can be reviewed, rerun, and used as context in future Codex or ChatGPT prompts.
+Research and execution currently share this repository and codebase, including feature and candidate definitions. Future research development is moving to a separate repository; that separation is in progress, and the research tools here remain part of the published snapshot. This project does not support live-account trading or unattended operation.
+
+[Back to README](../../README.md) | [Research usage](PIPELINE_STEPS.md#detailed-usage-reference)
 
 ## Stack
 

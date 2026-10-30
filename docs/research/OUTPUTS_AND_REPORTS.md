@@ -386,3 +386,65 @@ It is still research-only. `CANDIDATA_A_TEST_SUCCESSIVI` means only that a candi
 A single trader-facing report should be implemented only after runs are stable and metrics are consolidated across long, short, gross, net, yearly validation, random baseline, baseline diagnostics, horizon consistency, and walk-forward validation.
 
 That future report should summarize decisions for a human researcher. It should not be added yet, because the current project still needs stable net walk-forward evidence and further research-only backtests before a trader-facing layer would be reliable.
+
+## Return And Concentration Metrics
+
+[Back to README](../../README.md) | [Command examples](PIPELINE_STEPS.md#research-command-examples)
+
+The clear profit factor metric is:
+
+```text
+profit_factor_improvement_pct
+avg_profit_factor_improvement_pct
+```
+
+These are real percentages, not ratios. Positive values mean profit factor improved versus the matching baseline. For example, baseline `1.20` and scenario `1.26` produces `+5`; a 5% threshold is written as `5`, not `0.05`.
+
+If a scenario has gains but no losses, raw profit factor is mathematically infinite. Final research CSV writers avoid emitting raw non-finite values and treat non-finite profit factor improvements as unavailable rather than as automatic evidence.
+
+The clear drawdown metric is:
+
+```text
+max_drawdown_improvement_pct
+```
+
+Positive values mean drawdown improved. Negative values mean drawdown worsened. For example, baseline `-0.10` and scenario `-0.08` produces `+20`; baseline `-0.10` and scenario `-0.12` produces `-20`.
+
+`cumulative_return` is compounded:
+
+```text
+cumulative_return = product(1 + returns) - 1
+```
+
+It is not a simple sum of returns.
+
+The return quality columns include:
+
+- `payoff_ratio`: average positive return divided by the absolute average negative return.
+- `breakeven_winrate`: win rate needed to break even at the observed payoff ratio.
+- `breakeven_winrate_margin`: observed win rate minus breakeven win rate.
+
+### Performance Concentration Metrics
+
+Research reports also track whether a result is distributed through time or concentrated in a few lucky periods/trades. These metrics are calculated from the same strategy-return series used for the main report: gross returns when `--return-mode gross` is active, and estimated net returns when `--return-mode net` is active.
+
+The main concentration columns are:
+
+- `monthly_positive_ratio`: fraction of active months with compounded monthly return greater than zero.
+- `quarterly_positive_ratio`: fraction of active quarters with compounded quarterly return greater than zero.
+- `best_month_contribution_pct`: share of total positive monthly profit explained by the single best month.
+- `top_5_percent_trades_contribution_pct`: share of total positive trade profit explained by the best 5% of trades.
+- `max_flat_period_bars`: longest number of consecutive evaluated rows without a new equity high.
+
+If total positive profit is not greater than zero, contribution metrics are left empty instead of forcing a misleading value. A combination can look positive year by year and still be fragile if most of the profit comes from one month or a tiny number of trades. These metrics are used as light penalties for concentration risk, not as standalone promotion criteria.
+
+Current penalty checks are:
+
+```text
+monthly_positive_ratio < 0.45
+quarterly_positive_ratio < 0.50
+best_month_contribution_pct > 60
+top_5_percent_trades_contribution_pct > 70
+```
+
+Long and short remain separate, gross and net remain separate, and cross-pair and pair-specific reports keep their concentration diagnostics separate.

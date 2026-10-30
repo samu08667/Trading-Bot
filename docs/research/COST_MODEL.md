@@ -188,3 +188,37 @@ config/brokers/example_broker.example.json
 config/brokers/pepperstone_razor.example.json
 config/brokers/pepperstone_standard.example.json
 ```
+
+## Command Examples
+
+[Back to README](../../README.md) | [Pipeline usage](PIPELINE_STEPS.md#detailed-usage-reference)
+
+Run from the repository root with local inputs. Example configs are templates;
+verify symbol point sizes and account-specific assumptions before interpreting
+net results. The final comparison command connects to MT5 and is separate from
+offline validation.
+
+Full pipeline examples with estimated net returns:
+
+```powershell
+python scripts/run_full_research_pipeline.py --skip-calendar-import --skip-price-import --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --cost-mode estimated --return-mode net --cost-config config/cost_model.example.json --strict-cost-config --start-year 2022 --end-year 2024 --overwrite-validation
+python scripts/run_full_research_pipeline.py --skip-calendar-import --skip-price-import --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction short --cost-mode estimated --return-mode net --cost-config config/cost_model.example.json --strict-cost-config --start-year 2022 --end-year 2024 --overwrite-validation
+```
+
+Walk-forward can use the same estimated net mode:
+
+```powershell
+python scripts/run_walk_forward_research.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --target-horizon 10 --direction long --train-start-year 2020 --first-test-year 2022 --last-test-year 2025 --cost-mode estimated --return-mode net --cost-config config/cost_model.example.json --strict-cost-config --purge-overlap --embargo-bars 0
+```
+
+Historical spread calibration can be run offline from the local SQLite database without MetaTrader5:
+
+```powershell
+python scripts/analyze_historical_spreads.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --generate-config --overwrite
+```
+
+Recent MT5 spreads from the currently logged-in terminal can be compared with local DB spread history in read-only diagnostic mode:
+
+```powershell
+python scripts/compare_mt5_recent_spreads.py --symbols EURUSD GBPUSD USDJPY XAUUSD --timeframe M15 --mt5-lookback-hours 24 --broker-name Pepperstone --account-type Razor --overwrite
+```
